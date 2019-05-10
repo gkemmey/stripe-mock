@@ -121,6 +121,7 @@ type StubServer struct {
 	routes             map[spec.HTTPVerb][]stubServerRoute
 	spec               *spec.Spec
 	strictVersionCheck bool
+  database           map[string]interface{}
 }
 
 // HandleRequest handes an HTTP request directed at the API stub.
@@ -261,10 +262,34 @@ func (s *StubServer) HandleRequest(w http.ResponseWriter, r *http.Request) {
 		}
 		fmt.Printf("Response data: %s\n", responseDataJSON)
 	}
-	writeResponse(w, r, start, http.StatusOK, responseData)
+
+  if r.Method == "POST" && r.URL.Path == "/v1/customers" { // new customer
+    s.database[responseData.(map[string]interface {})["id"].(string)] = responseData
+  }
+
+  if r.Method == "POST" &&
+     pathParams != nil &&
+     r.URL.Path == fmt.Sprintf("/v1/customers/%s", *pathParams.PrimaryID) { // updating customer
+
+    if s.database[*pathParams.PrimaryID] != nil {
+      if requestData != nil {
+        for k, v := range requestData {
+          s.database[*pathParams.PrimaryID].(map[string]interface {})[k] = v
+        }
+      }
+    }
+  }
+
+  if pathParams != nil && s.database[*pathParams.PrimaryID] != nil {
+    writeResponse(w, r, start, http.StatusOK, s.database[*pathParams.PrimaryID])
+  } else {
+    writeResponse(w, r, start, http.StatusOK, responseData)
+  }
 }
 
 func (s *StubServer) initializeRouter() error {
+  s.database = make(map[string]interface {})
+
 	var numEndpoints int
 	var numPaths int
 	var numValidators int
